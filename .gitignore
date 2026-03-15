@@ -1,0 +1,11 @@
+.env
+.env.local
+.env.production
+__pycache__/
+*.pyc
+.chromadb/
+backend/data/data.db
+backend/data/dataset_clean.csv
+node_modules/
+.next/
+*.log
