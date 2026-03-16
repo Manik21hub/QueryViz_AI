@@ -3,17 +3,14 @@ import sqlite3
 import os
 import json
 from dotenv import load_dotenv
-from rag import build_schema_index
 
 def setup_db():
     # 1. Load .env
     load_dotenv()
     db_path = os.getenv("DB_PATH", "./data/data.db")
-
+    
     # Ensure data directory exists
-    dir_name = os.path.dirname(db_path)
-    if dir_name:
-        os.makedirs(dir_name, exist_ok=True)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
     # 2. Read dataset_clean.csv
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -79,12 +76,8 @@ def setup_db():
     schema_path = os.path.join(base_dir, "data", "schema_context.json")
     with open(schema_path, "w") as f:
         json.dump(schema_context, f, indent=2)
-
-    # 6. Build RAG schema index in ChromaDB
-    print("Building RAG schema index...")
-    build_schema_index()
-
-    # 7. Print summary
+    
+    # 6. Print summary
     print("\n--- Database Setup Report ---")
     print(f"Total rows loaded: {total_rows}")
     print("\nColumns and Types:")

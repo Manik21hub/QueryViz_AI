@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 
 # Local modules
-from rag import get_relevant_columns, build_schema_index, client as chroma_client, COLLECTION_NAME
+from rag import get_relevant_columns, client as chroma_client, COLLECTION_NAME
 from db import validate_sql, execute_query, DB_PATH
 
 # 1. SETUP
@@ -39,12 +39,6 @@ if not GEMINI_API_KEY or GEMINI_API_KEY == "get_from_aistudio.google.com":
 genai.configure(api_key=GEMINI_API_KEY)
 # We use gemini-2.0-flash as specified in the master spec.md
 model = genai.GenerativeModel("gemini-2.0-flash")
-
-
-@app.on_event("startup")
-def startup_event():
-    """Ensure the RAG schema index is built on every startup."""
-    build_schema_index()
 
 
 # 2. SCHEMATA
@@ -330,6 +324,134 @@ async def regions_endpoint(table: str = "sales_data"):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to query regions: {str(e)}")
+
+
+@app.get("/overview")
+async def overview_endpoint(table: str = "sales_data"):
+    """
+    Return aggregate KPI and quick-insight data for the welcome dashboard.
+    Supports `?table=sales_data` or `?table=user_data`.
+    """
+    if table not in ("sales_data", "user_data"):
+        raise HTTPException(status_code=400, detail="Invalid table name.")
+
+    def pct_change(current: Optional[float], previous: Optional[float]) -> Optional[float]:
+        if previous in (None, 0):
+            return None
+        if current is None:
+            return None
+        return round(((current - previous) / previous) * 100.0, 1)
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(f"PRAGMA table_info({table})")
+        cols = {row["name"] for row in cursor.fetchall()}
+
+        views_expr = "COALESCE(views, 0)" if "views" in cols else "0"
+        if "duration_min" in cols:
+            duration_min_expr = "COALESCE(duration_min, 0)"
+        elif "duration_sec" in cols:
+            duration_min_expr = "(COALESCE(duration_sec, 0) / 60.0)"
+        else:
+            duration_min_expr = "0"
+
+        engagement_parts = []
+        if "likes" in cols:
+            engagement_parts.append("COALESCE(likes, 0)")
+        if "comments" in cols:
+            engagement_parts.append("COALESCE(comments, 0)")
+        if "shares" in cols:
+            engagement_parts.append("COALESCE(shares, 0)")
+        engagement_expr = " + ".join(engagement_parts) if engagement_parts else "0"
+
+        totals_sql = (
+            f"SELECT "
+            f"COUNT(*) AS total_rows, "
+            f"SUM({views_expr}) AS total_views, "
+            f"SUM({duration_min_expr}) AS total_duration_min, "
+            f"SUM({engagement_expr}) AS total_engagement "
+            f"FROM {table}"
+        )
+        cursor.execute(totals_sql)
+        totals_row = dict(cursor.fetchone() or {})
+
+        monthly_rows: List[Dict[str, Any]] = []
+        if "upload_month" in cols:
+            monthly_sql = (
+                f"SELECT "
+                f"upload_month, "
+                f"SUM({views_expr}) AS total_views, "
+                f"SUM({duration_min_expr}) AS total_duration_min, "
+                f"SUM({engagement_expr}) AS total_engagement, "
+                f"COUNT(*) AS total_rows "
+                f"FROM {table} "
+                f"WHERE upload_month IS NOT NULL "
+                f"GROUP BY upload_month "
+                f"ORDER BY upload_month ASC "
+                f"LIMIT 500"
+            )
+            cursor.execute(monthly_sql)
+            monthly_rows = [dict(r) for r in cursor.fetchall()]
+
+        top_categories: List[Dict[str, Any]] = []
+        if "category" in cols:
+            top_cat_sql = (
+                f"SELECT "
+                f"category, "
+                f"SUM({views_expr}) AS total_views "
+                f"FROM {table} "
+                f"WHERE category IS NOT NULL AND TRIM(category) != '' "
+                f"GROUP BY category "
+                f"ORDER BY total_views DESC "
+                f"LIMIT 4"
+            )
+            cursor.execute(top_cat_sql)
+            top_categories = [dict(r) for r in cursor.fetchall()]
+
+        conn.close()
+
+        latest = monthly_rows[-1] if len(monthly_rows) >= 1 else None
+        previous = monthly_rows[-2] if len(monthly_rows) >= 2 else None
+
+        total_duration_min = float(totals_row.get("total_duration_min") or 0.0)
+        total_watch_hours = total_duration_min / 60.0
+
+        response = {
+            "table": table,
+            "totals": {
+                "total_rows": int(totals_row.get("total_rows") or 0),
+                "total_views": int(totals_row.get("total_views") or 0),
+                "total_watch_hours": round(total_watch_hours, 1),
+                "total_engagement": int(totals_row.get("total_engagement") or 0),
+            },
+            "changes": {
+                "views_pct": pct_change(
+                    float(latest.get("total_views") or 0.0) if latest else None,
+                    float(previous.get("total_views") or 0.0) if previous else None,
+                ),
+                "watch_hours_pct": pct_change(
+                    float(latest.get("total_duration_min") or 0.0) / 60.0 if latest else None,
+                    float(previous.get("total_duration_min") or 0.0) / 60.0 if previous else None,
+                ),
+                "engagement_pct": pct_change(
+                    float(latest.get("total_engagement") or 0.0) if latest else None,
+                    float(previous.get("total_engagement") or 0.0) if previous else None,
+                ),
+                "videos_pct": pct_change(
+                    float(latest.get("total_rows") or 0.0) if latest else None,
+                    float(previous.get("total_rows") or 0.0) if previous else None,
+                ),
+            },
+            "monthly_views": monthly_rows,
+            "top_categories": top_categories,
+        }
+        return response
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query overview: {str(e)}")
 
 
 @app.get("/health")

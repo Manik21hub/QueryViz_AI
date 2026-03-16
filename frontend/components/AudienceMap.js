@@ -50,7 +50,7 @@ const GEO_URL =
   'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
 // ─── AudienceMap ──────────────────────────────────────────────────────────
-export default function AudienceMap() {
+export default function AudienceMap({ table = 'sales_data' }) {
   const [viewsByCode, setViewsByCode] = useState({});  // { 'US': 120000 }
   const [regionNames, setRegionNames] = useState({});  // { 'US': 'United States' }
   const [topRegions,  setTopRegions]  = useState([]);  // sorted top 5
@@ -65,7 +65,7 @@ export default function AudienceMap() {
       try {
         // Use the direct SQL endpoint — no Gemini quota consumed
         const { data } = await axios.get('/api/regions', {
-          params: { table: 'sales_data' },
+          params: { table },
         });
 
         if (cancelled) return;
@@ -103,7 +103,7 @@ export default function AudienceMap() {
 
     fetch();
     return () => { cancelled = true; };
-  }, []);
+  }, [table]);
 
   // ── Tooltip helpers ───────────────────────────────────────────────────
   const handleMouseEnter = (geo, evt) => {

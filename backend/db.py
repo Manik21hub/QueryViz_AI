@@ -6,10 +6,7 @@ from fastapi import HTTPException
 
 load_dotenv()
 
-DB_PATH = os.getenv(
-    "DB_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "data.db")
-)
+DB_PATH = os.getenv("DB_PATH", "./data/data.db")
 
 # Forbidden SQL keywords (write/dangerous operations)
 _FORBIDDEN_PATTERN = re.compile(

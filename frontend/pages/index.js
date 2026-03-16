@@ -186,35 +186,57 @@ function ChartRenderer({ chartConfig, rows }) {
 }
 
 // ─── Placeholder mini charts ─────────────────────────────────────────────────
-function MiniSparkline() {
-  const pts = "40,60 80,45 120,55 160,30 200,40 240,22 280,28 320,12";
+function MiniSparkline({ values = [] }) {
+  if (!values.length) {
+    return <p className="text-xs text-slate-500 italic">No monthly trend data available</p>;
+  }
+
+  const width = 340;
+  const height = 80;
+  const padX = 20;
+  const padY = 12;
+  const maxVal = Math.max(...values);
+  const minVal = Math.min(...values);
+  const range = Math.max(maxVal - minVal, 1);
+  const step = values.length > 1 ? (width - padX * 2) / (values.length - 1) : 0;
+
+  const pointList = values.map((v, i) => {
+    const x = padX + i * step;
+    const y = height - padY - ((v - minVal) / range) * (height - padY * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  const pts = pointList.join(' ');
+  const area = `${pts} ${(padX + (values.length - 1) * step).toFixed(1)},${height} ${padX},${height}`;
+
   return (
     <svg viewBox="0 0 340 80" className="w-full h-full" preserveAspectRatio="none">
       <defs>
-        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id="spark-grad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#6366f1" stopOpacity="0.4"/>
           <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02"/>
         </linearGradient>
       </defs>
-      <polygon points={`40,60 80,45 120,55 160,30 200,40 240,22 280,28 320,12 320,80 40,80`} fill="url(#sg)"/>
+      <polygon points={area} fill="url(#spark-grad)"/>
       <polyline points={pts} fill="none" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }
 
-// ─── Static KPI placeholder cards ─────────────────────────────────────────────
-const STATIC_KPIS = [
-  { label:'Views',       value:'2.4M',     change:'+18%', icon:<IconEye/>,   cls:'kpi-blue'   },
-  { label:'Watch Time',  value:'1.2M hrs', change:'+24%', icon:<IconClock/>, cls:'kpi-purple' },
-  { label:'Subscribers', value:'52.6K',    change:'+12%', icon:<IconUsers/>, cls:'kpi-pink'   },
-  { label:'Engagement',  value:'86.4K',    change:'+8%',  icon:<IconHeart/>, cls:'kpi-amber'  },
-];
-const TOP_CATEGORIES = [
-  { name:'Tech',      pct:78, cls:'bar-tech'      },
-  { name:'Education', pct:62, cls:'bar-education' },
-  { name:'Gaming',    pct:45, cls:'bar-gaming'    },
-  { name:'Lifestyle', pct:33, cls:'bar-lifestyle' },
-];
+const CATEGORY_BAR_CLASSES = ['bar-tech', 'bar-education', 'bar-gaming', 'bar-lifestyle'];
+
+const formatCompact = (value) => {
+  const n = Number(value) || 0;
+  return new Intl.NumberFormat('en', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(n);
+};
+
+const formatPct = (value) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+};
 
 // ─── Upload Zone ─────────────────────────────────────────────────────────────
 function UploadZone({ onUpload, isUploading }) {
@@ -264,6 +286,8 @@ export default function Home() {
   const [input,         setInput]         = useState('');
   const [toast,         setToast]         = useState(null);
   const [activeQuery,   setActiveQuery]   = useState('');
+  const [overviewData,  setOverviewData]  = useState(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   const dashboardRef = useRef(null);
   const inputRef     = useRef(null);
@@ -276,6 +300,29 @@ export default function Home() {
   ];
 
   const showToast = (message, type) => setToast({ message, type });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchOverview = async () => {
+      setOverviewLoading(true);
+      try {
+        const { data } = await axios.get('/api/overview', {
+          params: { table: activeTable },
+        });
+        if (!cancelled) setOverviewData(data);
+      } catch {
+        if (!cancelled) setOverviewData(null);
+      } finally {
+        if (!cancelled) setOverviewLoading(false);
+      }
+    };
+
+    fetchOverview();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTable]);
 
   /* ── handleSend ─────────────────────────────────────── */
   const handleSend = useCallback(async (overrideMessage) => {
@@ -405,6 +452,43 @@ export default function Home() {
     }
 
     // ── Welcome / idle state ─────────────────────────────────────────────────
+    const totals = overviewData?.totals || {};
+    const changes = overviewData?.changes || {};
+    const monthlyViews = (overviewData?.monthly_views || []).slice(-8).map((r) => Number(r.total_views) || 0);
+    const topCategories = (overviewData?.top_categories || []).slice(0, 4);
+    const maxCategoryViews = Math.max(1, ...topCategories.map((c) => Number(c.total_views) || 0));
+
+    const liveKpis = [
+      {
+        label: 'Views',
+        value: formatCompact(totals.total_views),
+        change: formatPct(changes.views_pct),
+        icon: <IconEye/>,
+        cls: 'kpi-blue',
+      },
+      {
+        label: 'Watch Time',
+        value: `${formatCompact(totals.total_watch_hours)} hrs`,
+        change: formatPct(changes.watch_hours_pct),
+        icon: <IconClock/>,
+        cls: 'kpi-purple',
+      },
+      {
+        label: 'Videos',
+        value: formatCompact(totals.total_rows),
+        change: formatPct(changes.videos_pct),
+        icon: <IconUsers/>,
+        cls: 'kpi-pink',
+      },
+      {
+        label: 'Engagement',
+        value: formatCompact(totals.total_engagement),
+        change: formatPct(changes.engagement_pct),
+        icon: <IconHeart/>,
+        cls: 'kpi-amber',
+      },
+    ];
+
     return (
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
         {/* Welcome header */}
@@ -415,14 +499,14 @@ export default function Home() {
 
         {/* KPI row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {STATIC_KPIS.map((kpi,i) => (
+          {liveKpis.map((kpi,i) => (
             <div key={i} className={`glass rounded-xl p-4 border ${kpi.cls} flex flex-col gap-3`}>
               <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
                 {kpi.icon}{kpi.label}
               </div>
               <div>
                 <span className="text-2xl font-bold text-white" style={{fontFamily:'Syne'}}>{kpi.value}</span>
-                <span className="ml-2 text-xs text-emerald-400">{kpi.change}</span>
+                {kpi.change && <span className="ml-2 text-xs text-emerald-400">{kpi.change}</span>}
               </div>
             </div>
           ))}
@@ -442,23 +526,36 @@ export default function Home() {
             {/* Views Over Time */}
             <div className="glass rounded-2xl p-4 border col-span-1">
               <div className="text-sm font-medium text-white mb-3">Views Over Time</div>
-              <div className="h-24 w-full"><MiniSparkline/></div>
+              <div className="h-24 w-full">
+                {overviewLoading ? (
+                  <div className="w-full h-full rounded-md animate-pulse bg-white/5"/>
+                ) : (
+                  <MiniSparkline values={monthlyViews}/>
+                )}
+              </div>
             </div>
 
             {/* Top Categories */}
             <div className="glass rounded-2xl p-4 border">
               <div className="text-sm font-medium text-white mb-4">Top Categories</div>
               <div className="flex flex-col gap-3">
-                {TOP_CATEGORIES.map(c => (
-                  <div key={c.name}>
+                {topCategories.length === 0 && (
+                  <p className="text-xs text-slate-500 italic">No category data available</p>
+                )}
+                {topCategories.map((c, idx) => {
+                  const views = Number(c.total_views) || 0;
+                  const pct = Math.round((views / maxCategoryViews) * 100);
+                  const cls = CATEGORY_BAR_CLASSES[idx % CATEGORY_BAR_CLASSES.length];
+                  return (
+                  <div key={`${c.category}-${idx}`}>
                     <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-                      <span>{c.name}</span><span>{c.pct}%</span>
+                      <span>{c.category}</span><span>{pct}%</span>
                     </div>
                     <div className="h-2 rounded-full bg-white/5">
-                      <div className={`h-full rounded-full ${c.cls}`} style={{width:`${c.pct}%`}}/>
+                      <div className={`h-full rounded-full ${cls}`} style={{width:`${pct}%`}}/>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             </div>
 
@@ -466,7 +563,7 @@ export default function Home() {
             <div className="glass rounded-2xl p-4 border flex flex-col">
               <div className="text-sm font-medium text-white mb-3">Audience Location</div>
               <div className="flex-1">
-                <AudienceMap />
+                <AudienceMap table={activeTable} />
               </div>
             </div>
           </div>
