@@ -239,7 +239,7 @@ const formatPct = (value) => {
 };
 
 // ─── Upload Zone ─────────────────────────────────────────────────────────────
-function UploadZone({ onUpload, isUploading }) {
+function UploadZone({ onUpload, onUploadStart, isUploading }) {
   const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName]     = useState(null);
   const inputRef = useRef(null);
@@ -247,9 +247,11 @@ function UploadZone({ onUpload, isUploading }) {
     if (!file || !file.name.endsWith('.csv')) { onUpload(null,'Only .csv files accepted.'); return; }
     setFileName(file.name);
     const form = new FormData(); form.append('file', file);
+    onUploadStart(true);
     try { const { data } = await axios.post('/api/upload', form, { timeout: 120000 }); onUpload(data, null); }
     catch(e) { onUpload(null, e?.response?.data?.detail || e?.message || 'Upload failed'); }
-  }, [onUpload]);
+    finally { onUploadStart(false); }
+  }, [onUpload, onUploadStart]);
   const onDrop = useCallback((e) => { e.preventDefault(); setIsDragging(false); handleFile(e.dataTransfer.files[0]); }, [handleFile]);
 
   return (
@@ -288,9 +290,11 @@ export default function Home() {
   const [activeQuery,   setActiveQuery]   = useState('');
   const [overviewData,  setOverviewData]  = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const dashboardRef = useRef(null);
   const inputRef     = useRef(null);
+  const userMenuRef  = useRef(null);
 
   const QUERY_CHIPS = [
     { label:'Monthly Views by Category',   icon:<IconBar/>   },
@@ -300,6 +304,16 @@ export default function Home() {
   ];
 
   const showToast = (message, type) => setToast({ message, type });
+
+  useEffect(() => {
+    const onDocumentClick = (event) => {
+      if (!userMenuRef.current?.contains(event.target)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocumentClick);
+    return () => document.removeEventListener('mousedown', onDocumentClick);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -371,11 +385,29 @@ export default function Home() {
 
   /* ── handleUpload (UNCHANGED LOGIC) ────────────────────────────────────── */
   const handleUpload = useCallback((data, error) => {
-    setIsUploading(false);
     if (error) { showToast(error, 'error'); return; }
     setActiveTable('user_data'); setMessages([]); setDashboardData(null);
     setPreviousSql(''); setActiveQuery('');
     showToast(`Loaded ${data.row_count.toLocaleString()} rows · ${data.columns.join(', ')}`, 'success');
+  }, []);
+
+  const handleSwitchToSampleData = useCallback(() => {
+    setActiveTable('sales_data');
+    setMessages([]);
+    setDashboardData(null);
+    setPreviousSql('');
+    setActiveQuery('');
+    setIsUserMenuOpen(false);
+    showToast('Switched to sample dataset.', 'success');
+  }, []);
+
+  const handleClearConversation = useCallback(() => {
+    setMessages([]);
+    setDashboardData(null);
+    setPreviousSql('');
+    setActiveQuery('');
+    setIsUserMenuOpen(false);
+    showToast('Conversation cleared.', 'success');
   }, []);
 
   /* ── handleExport (UNCHANGED LOGIC) ────────────────────────────────────── */
@@ -646,7 +678,7 @@ export default function Home() {
           </div>
 
           {/* Right actions */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 relative" ref={userMenuRef}>
             <button
               onClick={handleExport}
               disabled={!dashboardData || dashboardData.type !== 'chart'}
@@ -654,10 +686,31 @@ export default function Home() {
               style={{background:'rgba(255,255,255,0.05)'}}>
               <IconDownload/> Export
             </button>
-            <div className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:border-white/20 cursor-pointer transition-colors"
+            <button
+              type="button"
+              onClick={() => setIsUserMenuOpen((prev) => !prev)}
+              className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:border-white/20 cursor-pointer transition-colors"
               style={{background:'rgba(255,255,255,0.05)'}}>
               <IconUser/>
-            </div>
+            </button>
+            {isUserMenuOpen && (
+              <div className="absolute right-0 top-11 w-56 rounded-xl border border-white/10 bg-slate-950/95 backdrop-blur-md shadow-xl p-2 z-30">
+                <button
+                  type="button"
+                  onClick={handleSwitchToSampleData}
+                  className="w-full text-left px-3 py-2 text-sm rounded-lg text-slate-200 hover:bg-white/10 transition-colors"
+                >
+                  Use Sample Data
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearConversation}
+                  className="w-full text-left px-3 py-2 text-sm rounded-lg text-slate-200 hover:bg-white/10 transition-colors"
+                >
+                  Clear Conversation
+                </button>
+              </div>
+            )}
           </div>
         </nav>
 
@@ -670,7 +723,7 @@ export default function Home() {
 
             {/* Upload */}
             <div className="p-3 pt-4">
-              <UploadZone onUpload={handleUpload} isUploading={isUploading}/>
+              <UploadZone onUpload={handleUpload} onUploadStart={setIsUploading} isUploading={isUploading}/>
             </div>
 
             {/* Query chips */}
@@ -704,7 +757,12 @@ export default function Home() {
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${activeTable==='user_data' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-indigo-500/20 text-indigo-400'}`}>
                     {activeTable}
                   </span>
-                  <button onClick={handleExport} className="text-slate-500 hover:text-slate-300 transition-colors" title="Export">
+                  <button
+                    onClick={handleExport}
+                    disabled={!dashboardData || dashboardData.type !== 'chart'}
+                    className="text-slate-500 hover:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="Export"
+                  >
                     <IconDownload/>
                   </button>
                 </div>
