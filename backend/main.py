@@ -272,6 +272,60 @@ async def upload_endpoint(file: UploadFile = File(...)):
     }
 
 
+@app.get("/regions")
+async def regions_endpoint(table: str = "sales_data"):
+    """
+    Return total views per region, directly from SQLite — no Gemini call.
+    Supports `?table=sales_data` or `?table=user_data` query param.
+    """
+    # Validate the table name to a safe allowlist
+    if table not in ("sales_data", "user_data"):
+        raise HTTPException(status_code=400, detail="Invalid table name.")
+
+    # Detect which columns exist in the requested table
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Get column list
+        cursor.execute(f"PRAGMA table_info({table})")
+        cols = {row["name"] for row in cursor.fetchall()}
+
+        # Pick best region and name columns available
+        if "region_name" in cols:
+            region_expr = "region_name"
+            code_expr   = "region" if "region" in cols else "region_name"
+        elif "region" in cols:
+            region_expr = "region"
+            code_expr   = "region"
+        else:
+            conn.close()
+            return {"rows": []}
+
+        views_col = "views" if "views" in cols else None
+        if not views_col:
+            conn.close()
+            return {"rows": []}
+
+        sql = (
+            f"SELECT {code_expr} AS region, {region_expr} AS region_name, "
+            f"SUM({views_col}) AS total_views "
+            f"FROM {table} "
+            f"WHERE {code_expr} IS NOT NULL "
+            f"GROUP BY {code_expr}, {region_expr} "
+            f"ORDER BY total_views DESC "
+            f"LIMIT 500"
+        )
+        cursor.execute(sql)
+        rows = [dict(r) for r in cursor.fetchmany(500)]
+        conn.close()
+        return {"rows": rows}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query regions: {str(e)}")
+
+
 @app.get("/health")
 async def health_check():
     # Simple db connection check

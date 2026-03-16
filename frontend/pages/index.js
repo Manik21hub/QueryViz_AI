@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import axios from 'axios';
+import dynamic from 'next/dynamic';
+
+// Dynamically imported — react-simple-maps uses browser APIs not available in SSR
+const AudienceMap = dynamic(() => import('../components/AudienceMap'), { ssr: false });
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
 const IconSearch = () => (
@@ -368,7 +372,7 @@ export default function Home() {
       const { chartConfig, rows } = dashboardData;
       const kpis = chartConfig?.kpis || [];
       return (
-        <div ref={dashboardRef} className="flex-1 overflow-y-auto p-6 flex flex-col gap-5 fade-in">
+        <div ref={dashboardRef} id="dashboard-main" className="flex-1 overflow-y-auto p-6 flex flex-col gap-5 fade-in">
           <div>
             <h2 className="text-xl font-semibold text-white" style={{fontFamily:'Syne'}}>{chartConfig?.title}</h2>
             <p className="text-sm text-slate-500 mt-0.5">{chartConfig?.chart_type?.toUpperCase()} · {rows?.length} rows</p>
@@ -419,7 +423,9 @@ export default function Home() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-base font-semibold text-white" style={{fontFamily:'Syne'}}>Quick Insights</h3>
-            <button className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+            <button
+              onClick={() => showToast('Ask a question in the search bar to explore all charts!', 'success')}
+              className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
               See All <IconArrowRight/>
             </button>
           </div>
@@ -447,23 +453,11 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Audience Location placeholder */}
+            {/* Audience Location — live choropleth map */}
             <div className="glass rounded-2xl p-4 border flex flex-col">
               <div className="text-sm font-medium text-white mb-3">Audience Location</div>
-              <div className="flex-1 flex items-center justify-center opacity-30">
-                <svg viewBox="0 0 400 240" className="w-full h-full">
-                  <rect width="400" height="240" fill="none"/>
-                  {/* rough world map dots pattern */}
-                  {[
-                    [50,80],[80,85],[110,80],[60,100],[95,95],[145,75],[160,80],[175,78],[190,82],
-                    [200,75],[215,78],[230,80],[100,110],[120,115],[180,100],[200,95],[220,100],
-                    [240,90],[260,85],[280,88],[300,90],[250,110],[270,115],[80,130],[100,135],
-                    [150,125],[200,120],[230,130],[180,150],[200,148],[260,140],[300,135],[320,130],
-                    [340,125],[360,120],[100,160],[130,165],[280,155],[300,160],[150,180],[200,185],
-                  ].map(([x,y],i) => <circle key={i} cx={x} cy={y} r="2.5" fill="#6366f1" opacity="0.8"/>)}
-                  <circle cx="240" cy="90" r="6" fill="#14b8a6" opacity="1"/>
-                  <circle cx="180" cy="100" r="5" fill="#6366f1" opacity="1"/>
-                </svg>
+              <div className="flex-1">
+                <AudienceMap />
               </div>
             </div>
           </div>
@@ -581,7 +575,7 @@ export default function Home() {
               </div>
               <div className="flex flex-col gap-1">
                 {QUERY_CHIPS.map(chip => (
-                  <button key={chip.label} onClick={()=>handleSend(chip.label)}
+                  <button key={chip.label} onClick={()=>{ setInput(chip.label); handleSend(chip.label); }}
                     className="flex items-center gap-3 text-left w-full px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white border border-transparent hover:chip-active transition-all duration-150 group"
                     style={{fontFamily:'DM Sans'}}
                     onMouseEnter={e=>{e.currentTarget.style.background='rgba(99,102,241,0.1)';e.currentTarget.style.borderColor='rgba(99,102,241,0.25)';e.currentTarget.style.color='#a5b4fc';}}
