@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
-import ChartRenderer from '../components/ChartRenderer';
 
 // Dynamically imported — react-simple-maps uses browser APIs not available in SSR
 const AudienceMap = dynamic(() => import('../components/AudienceMap'), { ssr: false });
@@ -103,6 +102,88 @@ function LoadingDots() {
   return <div className="dot-bounce flex items-center gap-0.5 py-1"><span/><span/><span/></div>;
 }
 
+// ─── ChartRenderer (UNCHANGED) ───────────────────────────────────────────────
+function ChartRenderer({ chartConfig, rows }) {
+  const { ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = require('recharts');
+  const COLORS = ['#6366f1','#14b8a6','#8b5cf6','#f59e0b','#ef4444','#ec4899'];
+  const { chart_type, x_axis, y_axis } = chartConfig;
+  if (!rows || rows.length === 0) return <p className="text-slate-500 text-sm italic text-center py-8">No data returned for this query.</p>;
+  const commonProps = { data: rows, margin: { top: 10, right: 20, left: -10, bottom: 60 } };
+  const xTickProps = { tick: { fill: '#64748b', fontSize: 11 }, angle: -35, textAnchor: 'end', interval: 'preserveStartEnd' };
+  const yTickProps = { tick: { fill: '#64748b', fontSize: 11 } };
+  const tooltipStyle = { contentStyle: { background: '#111827', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 10, fontSize: 12 }, labelStyle: { color: '#e2e8f0' } };
+
+  if (chart_type === 'table') {
+    const cols = Object.keys(rows[0]);
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-white/10">
+              {cols.map(c => <th key={c} className="text-left px-4 py-3 text-xs font-semibold text-indigo-300 uppercase tracking-wider whitespace-nowrap">{c.replace(/_/g,' ')}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r,i) => (
+              <tr key={i} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                {cols.map(c => <td key={c} className="px-4 py-2.5 text-slate-300 whitespace-nowrap">{String(r[c]??'—')}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  if (chart_type === 'pie') {
+    const pieData = rows.map(r => ({ name: r[x_axis], value: Number(r[y_axis])||0 }));
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <PieChart>
+          <Pie data={pieData} cx="50%" cy="50%" outerRadius={100} dataKey="value" label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+            {pieData.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+          </Pie>
+          <Tooltip {...tooltipStyle}/>
+        </PieChart>
+      </ResponsiveContainer>
+    );
+  }
+  if (chart_type === 'line') {
+    return (
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart {...commonProps}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08"/>
+          <XAxis dataKey={x_axis} {...xTickProps}/><YAxis {...yTickProps}/>
+          <Tooltip {...tooltipStyle}/><Legend wrapperStyle={{fontSize:12,color:'#64748b',paddingTop:16}}/>
+          <Line type="monotone" dataKey={y_axis} stroke="#6366f1" strokeWidth={2.5} dot={false} activeDot={{r:5,fill:'#6366f1'}}/>
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  }
+  if (chart_type === 'scatter') {
+    return (
+      <ResponsiveContainer width="100%" height={280}>
+        <ScatterChart margin={{top:10,right:20,bottom:60,left:-10}}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08"/>
+          <XAxis dataKey={x_axis} name={x_axis} {...xTickProps}/><YAxis dataKey={y_axis} name={y_axis} {...yTickProps}/>
+          <Tooltip cursor={{strokeDasharray:'3 3'}} {...tooltipStyle}/>
+          <Scatter data={rows} fill="#6366f1" fillOpacity={0.75}/>
+        </ScatterChart>
+      </ResponsiveContainer>
+    );
+  }
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <BarChart {...commonProps}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08"/>
+        <XAxis dataKey={x_axis} {...xTickProps}/><YAxis {...yTickProps}/>
+        <Tooltip {...tooltipStyle}/>
+        <Bar dataKey={y_axis} fill="#6366f1" radius={[4,4,0,0]}>
+          {rows.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
 
 // ─── Placeholder mini charts ─────────────────────────────────────────────────
 function MiniSparkline() {
@@ -144,8 +225,8 @@ function UploadZone({ onUpload, isUploading }) {
     if (!file || !file.name.endsWith('.csv')) { onUpload(null,'Only .csv files accepted.'); return; }
     setFileName(file.name);
     const form = new FormData(); form.append('file', file);
-    try { const { data } = await axios.post('/api/upload', form, { headers:{'Content-Type':'multipart/form-data'} }); onUpload(data, null); }
-    catch(e) { onUpload(null, e?.response?.data?.detail || 'Upload failed'); }
+    try { const { data } = await axios.post('/api/upload', form, { timeout: 120000 }); onUpload(data, null); }
+    catch(e) { onUpload(null, e?.response?.data?.detail || e?.message || 'Upload failed'); }
   }, [onUpload]);
   const onDrop = useCallback((e) => { e.preventDefault(); setIsDragging(false); handleFile(e.dataTransfer.files[0]); }, [handleFile]);
 
@@ -196,19 +277,28 @@ export default function Home() {
 
   const showToast = (message, type) => setToast({ message, type });
 
-  /* ── handleSend (UNCHANGED LOGIC) ─────────────────────────────────────── */
+  /* ── handleSend ─────────────────────────────────────── */
   const handleSend = useCallback(async (overrideMessage) => {
     const text = (overrideMessage ?? input).trim();
     if (!text || isLoading) return;
     setInput('');
     setActiveQuery(text);
+
+    // If answering a clarify question, prepend it for the backend but not the UI
+    const isClarifying = dashboardData?.type === 'clarify';
+    const apiMessageText = isClarifying ? `${dashboardData.message} — ${text}` : text;
+
     const userMsg = { role:'user', content:text };
+    const apiMsg = { role:'user', content:apiMessageText };
+
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
-    const chatHistory = [...messages, userMsg].slice(-5).map(m=>({ role:m.role, content:m.content }));
+    
+    // For the API chat history, send what Gemini actually saw for past messages
+    const chatHistory = messages.slice(-5).map(m=>({ role:m.role, content:m.content }));
     try {
       const { data } = await axios.post('/api/query', {
-        user_message: text, chat_history: chatHistory,
+        user_message: apiMessageText, chat_history: chatHistory,
         previous_sql: previousSql, active_table: activeTable,
       });
       if (data.clarify) {
@@ -230,7 +320,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, previousSql, activeTable]);
+  }, [input, isLoading, messages, previousSql, activeTable, dashboardData]);
 
   /* ── handleUpload (UNCHANGED LOGIC) ────────────────────────────────────── */
   const handleUpload = useCallback((data, error) => {
@@ -289,10 +379,26 @@ export default function Home() {
 
     if (dashboardData?.type === 'chart') {
       const { chartConfig, rows } = dashboardData;
+      const kpis = chartConfig?.kpis || [];
       return (
-        <div ref={dashboardRef} id="dashboard-main" className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 fade-in">
+        <div ref={dashboardRef} id="dashboard-main" className="flex-1 overflow-y-auto p-6 flex flex-col gap-5 fade-in">
+          <div>
+            <h2 className="text-xl font-semibold text-white" style={{fontFamily:'Syne'}}>{chartConfig?.title}</h2>
+            <p className="text-sm text-slate-500 mt-0.5">{chartConfig?.chart_type?.toUpperCase()} · {rows?.length} rows</p>
+          </div>
+          {kpis.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {kpis.map((kpi,i) => (
+                <div key={i} className="glass rounded-xl p-4 border">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">{kpi.label}</div>
+                  <div className="text-2xl font-bold text-white" style={{fontFamily:'Syne'}}>{kpi.value}</div>
+                  {kpi.change && <div className="text-xs text-emerald-400 mt-1">{kpi.change}</div>}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="glass rounded-2xl p-5 border">
-            <ChartRenderer chart_config={chartConfig} rows={rows} />
+            <ChartRenderer chartConfig={chartConfig} rows={rows}/>
           </div>
         </div>
       );

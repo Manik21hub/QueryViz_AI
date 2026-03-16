@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 
 # Local modules
-from rag import get_relevant_columns, client as chroma_client, COLLECTION_NAME
+from rag import get_relevant_columns, build_schema_index, client as chroma_client, COLLECTION_NAME
 from db import validate_sql, execute_query, DB_PATH
 
 # 1. SETUP
@@ -39,6 +39,12 @@ if not GEMINI_API_KEY or GEMINI_API_KEY == "get_from_aistudio.google.com":
 genai.configure(api_key=GEMINI_API_KEY)
 # We use gemini-2.0-flash as specified in the master spec.md
 model = genai.GenerativeModel("gemini-2.0-flash")
+
+
+@app.on_event("startup")
+def startup_event():
+    """Ensure the RAG schema index is built on every startup."""
+    build_schema_index()
 
 
 # 2. SCHEMATA
@@ -206,18 +212,18 @@ async def upload_endpoint(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Only CSV files are allowed.")
         
     content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large. Max 10MB allowed.")
+    if len(content) > 90 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Max 90MB allowed.")
         
     try:
-        df = pd.read_csv(io.BytesIO(content))
+        df = pd.read_csv(io.BytesIO(content), on_bad_lines="skip", encoding_errors="replace")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse CSV: {str(e)}")
         
     # Load as "user_data" table
     try:
         conn = sqlite3.connect(DB_PATH)
-        df.to_sql("user_data", conn, if_exists="replace", index=False)
+        df.to_sql("user_data", conn, if_exists="replace", index=False, chunksize=5000)
         conn.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to write to database: {str(e)}")

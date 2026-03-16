@@ -69,14 +69,20 @@ def get_relevant_columns(user_query: str, top_k: int = 8) -> str:
     """Queries the schema index for the given user query and returns a formatted string."""
     try:
         collection = client.get_collection(name=COLLECTION_NAME)
-    except ValueError:
-        # Fallback if collection doesn't exist yet
+    except Exception:
+        # Fallback if collection doesn't exist yet (ChromaDB raises Exception, not ValueError)
         return "Error: Schema index not built yet."
-        
+
+    # Guard: cap n_results to the number of indexed documents to prevent overflow
+    count = collection.count()
+    if count == 0:
+        return "No relevant columns found."
+    n_results = min(top_k, count)
+
     # Query ChromaDB collection
     results = collection.query(
         query_texts=[user_query],
-        n_results=top_k
+        n_results=n_results
     )
     
     if not results or not results["metadatas"] or not results["metadatas"][0]:
