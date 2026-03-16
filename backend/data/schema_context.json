@@ -1,0 +1,153 @@
+{
+  "timestamp": {
+    "type": "object",
+    "sample_values": [
+      "2024-09-14 05:08:02",
+      "2025-08-09 12:23:26",
+      "2024-03-04 14:39:48"
+    ],
+    "description": "Precise date and time of the video upload."
+  },
+  "video_id": {
+    "type": "object",
+    "sample_values": [
+      "VID_589765",
+      "VID_577279",
+      "VID_890301"
+    ],
+    "description": "Unique identifier for each YouTube video."
+  },
+  "category": {
+    "type": "object",
+    "sample_values": [
+      "Vlogs",
+      "Tech Reviews",
+      "Gaming"
+    ],
+    "description": "Broad content category such as Music, Gaming, or Education."
+  },
+  "language": {
+    "type": "object",
+    "sample_values": [
+      "Japanese",
+      "Urdu",
+      "English"
+    ],
+    "description": "Primary language of the video content."
+  },
+  "region": {
+    "type": "object",
+    "sample_values": [
+      "PK",
+      "UK",
+      "BR"
+    ],
+    "description": "Two-letter country code representing the target region."
+  },
+  "duration_sec": {
+    "type": "int64",
+    "sample_values": [
+      873,
+      2335,
+      1895
+    ],
+    "description": "Total length of the video in seconds."
+  },
+  "views": {
+    "type": "int64",
+    "sample_values": [
+      6826,
+      11371,
+      7509
+    ],
+    "description": "Total number of views received by the video."
+  },
+  "likes": {
+    "type": "int64",
+    "sample_values": [
+      396,
+      402,
+      730
+    ],
+    "description": "Total number of likes on the video."
+  },
+  "comments": {
+    "type": "int64",
+    "sample_values": [
+      34,
+      26,
+      45
+    ],
+    "description": "Total number of comments on the video."
+  },
+  "shares": {
+    "type": "int64",
+    "sample_values": [
+      31,
+      19,
+      25
+    ],
+    "description": "Total number of times the video was shared."
+  },
+  "sentiment_score": {
+    "type": "float64",
+    "sample_values": [
+      -0.082,
+      -0.873,
+      -0.764
+    ],
+    "description": "Average audience sentiment ranging from -1.0 (unhappy) to 1.0 (very happy)."
+  },
+  "ads_enabled": {
+    "type": "int64",
+    "sample_values": [
+      1,
+      0
+    ],
+    "description": "Binary flag indicating if ads are enabled (1) or not (0)."
+  },
+  "upload_month": {
+    "type": "object",
+    "sample_values": [
+      "2024-09",
+      "2025-08",
+      "2024-03"
+    ],
+    "description": "Year and month of upload in YYYY-MM format, useful for monthly trends."
+  },
+  "upload_year": {
+    "type": "int64",
+    "sample_values": [
+      2024,
+      2025
+    ],
+    "description": "The calendar year the video was uploaded."
+  },
+  "day_of_week": {
+    "type": "object",
+    "sample_values": [
+      "Saturday",
+      "Monday",
+      "Sunday"
+    ],
+    "description": "The full name of the day the video was uploaded (e.g., Monday)."
+  },
+  "region_name": {
+    "type": "object",
+    "sample_values": [
+      "Pakistan",
+      "United Kingdom",
+      "Brazil"
+    ],
+    "description": "Full name of the country or region for better readability."
+  },
+  "duration_min": {
+    "type": "float64",
+    "sample_values": [
+      14.6,
+      38.9,
+      31.6
+    ],
+    "description": "Total length of the video in minutes, rounded to one decimal place."
+  }
+}
