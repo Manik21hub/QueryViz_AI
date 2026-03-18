@@ -1,8 +1,0 @@
-fastapi
-uvicorn
-google-generativeai
-pandas
-chromadb
-python-multipart
-python-dotenv
-sqlite3
