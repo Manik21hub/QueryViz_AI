@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0d0d12; /* Dark theme background matching reference */
+  --foreground: #f8fafc; /* Light text */
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Tailwind Animations for UX Polish */
+@layer utilities {
+  .animate-in {
+    animation-duration: 700ms;
+    animation-fill-mode: both;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .fade-in {
+    animation-name: fadeIn;
+  }
+  .slide-in-from-bottom-8 {
+    animation-name: slideInFromBottom8;
+  }
+  .slide-in-from-bottom-4 {
+    animation-name: slideInFromBottom4;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInFromBottom8 {
+  from { transform: translateY(2rem); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideInFromBottom4 {
+  from { transform: translateY(1rem); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
